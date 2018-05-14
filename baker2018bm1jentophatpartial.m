@@ -8,6 +8,8 @@
 
 close all, clear all
 
+%rng('shuffle');      % Ensures we're using "random" numbers
+rng('default');     % For repeatable "random" numbers
 nNumCycles = 100;
 % NREL 5MW parameters
 nNumRtrs = 9; % Number of rotors in field
@@ -21,10 +23,9 @@ BestAEP = [1,0];                   % To store the location of our best AEP. (ind
 %x0 =  [-500., -500., -500., 0., -500., 500., 0., -500., 0., 0., 0., 500., 500., -500.,500., 0., 500., 500.];
 %%{
 % Run it and save our results
+
 for i = 1:nNumCycles
     i                    % Output which iteration we're on
-    %rng('shuffle');      % Ensures we're using "random" numbers
-    rng('default');     % For repeatable "random" numbers
     x0 = ((rand(1,18)-0.5)*1000); % Move between -1000 and 1000
     [xopt,fopt,~,~] = optimize_BenchmarkJens(x0, nNumRtrs);
     
