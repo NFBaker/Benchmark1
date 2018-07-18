@@ -1,6 +1,6 @@
 % Nicholas F. Baker
 % Benchmark Competition 1
-%    Jensen Top Hat and Partial Wake implementation
+%    Jensen Cosine implementation
 % Begun 7 Mar 2018
 % Completed 12 Mar 2018 (Original assignment)
 % Modified 09 Apr 2018 (For Me575 group project)
@@ -9,7 +9,7 @@
 close all, clear all
 
 %rng('shuffle');      % Ensures we're using "random" numbers
-rng('default');     % For repeatable "random" numbers
+rng('default');       % For repeatable "random" numbers
 nNumCycles = 100;
 % NREL 5MW parameters
 nNumRtrs = 9; % Number of rotors in field
@@ -23,7 +23,6 @@ BestAEP = [1,0];                   % To store the location of our best AEP. (ind
 %x0 =  [-500., -500., -500., 0., -500., 500., 0., -500., 0., 0., 0., 500., 500., -500.,500., 0., 500., 500.];
 %%{
 % Run it and save our results
-
 for i = 1:nNumCycles
     i                    % Output which iteration we're on
     x0 = ((rand(1,18)-0.5)*1000); % Move between -1000 and 1000
@@ -128,8 +127,8 @@ function [xopt, fopt, exitflag, output] = optimize_BenchmarkJens(x0, nNumRtrs)
         % Wind seen from turbine location
         UinfLoc = BenchmarkWindSpeed(RtrLoc(:,1), RtrLoc(:,2));
         % Calculation adjusting wind due to wake
-        %[uObs] = BenchmarkWakeEffectsFull(UinfLoc, RtrLoc, nDegBucket, Alpha);
-        [uObs] = BenchmarkWakeEffectsPartial(UinfLoc, RtrLoc, nDegBucket, Alpha);
+        [uObs] = BenchmarkWakeEffectsFull(UinfLoc, RtrLoc, nDegBucket, Alpha);
+        %[uObs] = BenchmarkWakeEffectsPartial(UinfLoc, RtrLoc, nDegBucket, Alpha);
         
         % Power Curve, found in the benchmark paper
         [Pu] = BenchmarkPower(uObs);
@@ -186,7 +185,7 @@ function [xopt, fopt, exitflag, output] = optimize_BenchmarkJens(x0, nNumRtrs)
             [~, c, ceq] = objcon(x);
     end
 end
-function [uObs] = BenchmarkWakeEffectsPartial(UinfLoc, RtrLoc, nDegBucket, Alpha)
+function [uObs] = BenchmarkWakeEffectsFull(UinfLoc, RtrLoc, nDegBucket, Alpha)
     %Computes the observed wind at each turbine location due to:
     %       1) Wind strength at location
     %       2) Wake effects per direction
@@ -204,63 +203,33 @@ function [uObs] = BenchmarkWakeEffectsPartial(UinfLoc, RtrLoc, nDegBucket, Alpha
     
     % Going through each direction from every direction
     for degCur = 0:nDegBucket:(360-nDegBucket)
-        nBucketCtr = nBucketCtr + 1;                          % Increase our counter
+        nBucketCtr = nBucketCtr + 1;                    % Increase our counter
         RotatedRtrLoc = RotatePoints(RtrLoc, degCur);   % Rotate our points so we're looking from the wind's frame of reference
         IndxOrder = TurbineOrder(RotatedRtrLoc);        % Get index list of which turbines are leftmost to rightmost.
         WakeEfctFctr = ones(nNumRtrs,1);                % Running total of effect of wakes from other turbines, initialize to 100% (1). Reset for every direction.
         
         % Calculate wake effects from each rotor
         for i = 1:(nNumRtrs-1)                          % Don't check last rotor, it won't effect itself, and nothing is behind it
-            for j = (i+1):nNumRtrs                      % Check effect on every other furtehr-downstream rotor
+            for j = (i+1):nNumRtrs                      % Check effect on every other further-downstream rotor
                 % Get y-coordinates for Primary rotor's (i) left and right pt
                 PriXc = RotatedRtrLoc(IndxOrder(i),1);
                 PriYc = RotatedRtrLoc(IndxOrder(i),2);
-                PriYr = PriYc + r0;
-                PriYl = PriYc - r0;
                 
                 % Store TgtRtr's center point y-coord in a local variable
                 TgtXc = RotatedRtrLoc(IndxOrder(j),1);
                 TgtYc = RotatedRtrLoc(IndxOrder(j),2);
-                TgtYr = TgtYc + r0;
-                TgtYl = TgtYc - r0;
                 
-                % Difference in x positions, value used to evaluate Jensen
-                xDiff = abs(TgtXc - PriXc);
-                
-                % Calculate wake lines from primary at Tgt x val
-                PriRlineY = tan(Phi) * (xDiff) + PriYr;   % y - Location of Primary rotor's Right wake limit
-                PriLlineY = tan(-Phi) * (xDiff) + PriYl;  % y - Location of Primary rotor's Left wake limit
-                
-                %-- Partial Wake Check --%
-                % If EITHER the left or right points of TgtRtr are in wake of PrimRtr, bInWake = true
-                bInWake = ( ((TgtYr <= PriRlineY) ...
-                           & (TgtYr >= PriLlineY)) ...
-                          | ((TgtYl <= PriRlineY) ...
-                           & (TgtYl >= PriLlineY)) );
-                % If BOTH the left or right points of TgtRtr are in wake of PrimRtr, bFullWake = true
-                bFullWake = ( ((TgtYr <= PriRlineY) ...
-                             & (TgtYr >= PriLlineY)) ...
-                            & ((TgtYl <= PriRlineY) ...
-                             & (TgtYl >= PriLlineY)) );
+                % Calculate data for Cosine curve (20 degree window)
+                Opp = abs(TgtYc - PriYc);
+                Adj = TgtXc - PriXc;                % Difference in x positions, value used to evaluate Jensen
+                ThetaJensen = atand(Opp/Adj);       % Finds where on the cosine curve we are
 
+                %-- Wake check --%
+                % If Center TgtRtr is in wake of PrimRtr, bInWake = true
+                bInWake = ( abs(ThetaJensen) <= 20 );
                 % Now that we know where it is, do our wake calculations:
                 if bInWake              % If we're in the wake:
-                    if bFullWake        % If we're fully waked, do normal jensen calculations
-                        WakeEfctFctr(IndxOrder(j)) = CalculateWakeEffectTopHat(RotatedRtrLoc(IndxOrder(i),:), RotatedRtrLoc(IndxOrder(j),:), WakeEfctFctr(IndxOrder(j)), D, Alpha);
-                    else    % If we're waked and the Tgt turbine isn't fully in, we're "partially waked", so do the math.
-                        % Get the area and center of the overlap slice, referred to as "partial" or "part"
-                        [WakedArea,WakedCenter] = JensenPartialWakeOverlap(RotatedRtrLoc(IndxOrder(i),:), RotatedRtrLoc(IndxOrder(j),:), D, Alpha);
-                        UnWakedArea = RtrArea - WakedArea;      % Get the area of the rotor remaining
-                  %PROBLEM IS IN CALCULATING AREA OF WAKED PORTION
-                        PrcntAreaPart = WakedArea/RtrArea;   % Calculate the percent area of the overlap part
-                        PrcntAreaMain = UnWakedArea/RtrArea;   % Calculate the percent area of the rest
-                        % Calculate weighted wake effects
-                        WakeEffectPart = CalculateWakeEffectTopHat(RotatedRtrLoc(IndxOrder(i),:), WakedCenter, 1, D, Alpha);
-                        WakeEffectMain = 1; % No wake effect for the main body (100% freestream)
-                        WakeEffectWeighted = (PrcntAreaMain * WakeEffectMain) + (PrcntAreaPart * WakeEffectPart);   % The resultant wake effect seen by the rotor, weighted for the percentage in the wake
-                        
-                        WakeEfctFctr(IndxOrder(j)) = WakeEfctFctr(IndxOrder(j)) * WakeEffectWeighted;
-                    end
+                    WakeEfctFctr(IndxOrder(j)) = CalculateWakeEffectCosine(RotatedRtrLoc(IndxOrder(i),:), RotatedRtrLoc(IndxOrder(j),:), WakeEfctFctr(IndxOrder(j)), D, Alpha);
                 end  % If we're not in the wake, do nothing (no else statement)
             end
         end
@@ -284,7 +253,7 @@ function [Pu] = BenchmarkPower(uObs)
             if (uObs(i,j) < Vci)
                 Pu(i,j) = 0;
             elseif (Vci <= uObs(i,j)) && (uObs(i,j) <= Vrws)
-                Pu(i,j) = Prat * ((uObs(i,j) - Vci) / (Vrws - Vci));
+                Pu(i,j) = Prat * ((uObs(i,j) - Vci) / (Vrws - Vci))^3;
             else    %(uObs > Vrws)
                 Pu(i,j) = Prat;
             end
@@ -317,7 +286,7 @@ function [RotatedRtrLoc] = RotatePoints(RtrLoc, Phi)
     PolarRtrLoc(:,1) = PolarRtrLoc(:,1) + (deg2rad(90) + deg2rad(Phi));                         % Shift all locations by given direction so wind comes from -x direction (270 deg)
     [RotatedRtrLoc(:,1),RotatedRtrLoc(:,2)] = pol2cart(PolarRtrLoc(:,1), PolarRtrLoc(:,2));     % Translate back to cartesian coord system
 end
-function [WakedArea, WakedCenter] = JensenPartialWakeOverlap(PriRtrXy, TgtRtrXy, Diam, Alpha)
+function [PartialArea, PartialCenter] = JensenPartialWakeOverlap(PriRtrXy, TgtRtrXy, Diam, Alpha)
     %-- Takes two rotated rotor coordinates and determines the area of wake overlap --%
     d = abs(TgtRtrXy(2) - PriRtrXy(2));         % Subtract the y-coordinates for the 'd' distance.
     xDiff = abs(TgtRtrXy(1) - PriRtrXy(1));     % Subrtact the x-coordinates for the x-distance.
@@ -328,27 +297,34 @@ function [WakedArea, WakedCenter] = JensenPartialWakeOverlap(PriRtrXy, TgtRtrXy,
     FirstTerm = (r^2) * acos((d^2 + r^2 - R^2) / (2*d*r));
     SecondTerm = (R^2) * acos((d^2 + R^2 - r^2) / (2*d*R));
     Radical = (1/2) * sqrt( (-d+r+R)*(d+r-R)*(d-r+R)*(d+r+R) );
-    WakedArea = FirstTerm + SecondTerm - Radical; % CORRECTED TO MINUS SIGN
+    PartialArea = FirstTerm + SecondTerm + Radical;
     
     %- Center calculations -%
     PartYcFromPriYc = ((d^2 - r^2 + R^2)/ (2*d));   % Y-coord calculation in lab book
-    WakedCenter = zeros(2,1);                     % Initialize our point array. Format: (x,y).
-    WakedCenter(1) = TgtRtrXy(1);                 % Partial's x-coord lies in plane of TgtRtr
+    PartialCenter = zeros(2,1);                     % Initialize our point array. Format: (x,y).
+    PartialCenter(1) = TgtRtrXy(1);                 % Partial's x-coord lies in plane of TgtRtr
     if (PriRtrXy(2) < TgtRtrXy(2))                  % If TgtRtr is above the PriRtr
-        WakedCenter(2) = PriRtrXy(2) + PartYcFromPriYc;    % Add the distance to center
+        PartialCenter(2) = PriRtrXy(2) + PartYcFromPriYc;    % Add the distance to center
     else                                            % If TgtRtr is below
-        WakedCenter(2) = PriRtrXy(2) - PartYcFromPriYc;    % Subtract it
+        PartialCenter(2) = PriRtrXy(2) - PartYcFromPriYc;    % Subtract it
     end
 end
-function [WakeEfctFctrFinal] = CalculateWakeEffectTopHat(PriRtrXy, TgtRtrXy, WakeEfctFctrInit, Diam, Alpha)
+function [WakeEfctFctrFinal] = CalculateWakeEffectCosine(PriRtrXy, TgtRtrXy, WakeEfctFctrInit, Diam, Alpha)
     %-- Given the current wake effect factor, calculates the new factor
     % given a rotor location --%
+    PriYc = PriRtrXy(2);
+    TgtYc = TgtRtrXy(2);
     PriXc = PriRtrXy(1);
     TgtXc = TgtRtrXy(1);
     xDiff = abs(TgtXc - PriXc);
     r0 = Diam/2;                        % Rotor radius
 
-    WakeEfctFctrFinal = WakeEfctFctrInit * (1- (2/3)*((r0/(r0 + Alpha*xDiff))^2));  % Multiply by Jensen factor.
+    Opp = abs(TgtYc - PriYc);
+    Adj = TgtXc - PriXc;
+    ThetaJensen = atand(Opp/Adj);       % Finds where on the cosine curve we are
+    
+    fJensen = (1 + cosd(9 * ThetaJensen))/2;     % Taken from (Jensen 83)
+    WakeEfctFctrFinal = WakeEfctFctrInit * (1- (2/3)*(((fJensen * r0)/(r0 + Alpha*xDiff))^2));  % Multiply by Jensen factor.
 end
 function [OrderList] = TurbineOrder(RtrLoc)
     % Determines turbine order from left to right along the x axis.
