@@ -166,15 +166,8 @@ function [xopt, fopt, exitflag, output] = optimize_BenchmarkJens(x0, nNumRtrs, b
         f = -(sum(PwrDir.*FreqWindDir)*AnlHrsOp);  % Multiply the power seen in each direction by the frequency, then sum all power to get total farm power
         
         % Inequality Constraints
-        nConstIndex = 0;            % Initialize our index array
-        c = zeros(nNumPairs,1);     % Initialize constraint array, for how many unique pairs we have
-        for i = 1:(nNumRtrs-1)
-            for j = (i+1):nNumRtrs
-                nConstIndex = nConstIndex+1;      % Map the constraints to be sequential, in order of pairs
-                c(nConstIndex) = (-(RtrLoc(i,1) - RtrLoc(j,1))^2 - (RtrLoc(i,2) - RtrLoc(j,2))^2) + ((2*D)^2);    % Proximity constraint
-            end
-        end
-        %c
+        c = (-(pdist(RtrLoc, 'euclidean')).^2 + ((2*D)^2))';      % Vectorize the distance formula between pairs
+        
         % Equality Constraints (None)
         ceq = [];
     end
