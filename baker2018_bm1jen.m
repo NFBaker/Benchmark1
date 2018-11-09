@@ -166,7 +166,7 @@ function [xopt, fopt, exitflag, output] = optimize_BenchmarkJens(x0, nNumRtrs, b
         f = -(sum(PwrDir.*FreqWindDir)*AnlHrsOp);  % Multiply the power seen in each direction by the frequency, then sum all power to get total farm power
         
         % Inequality Constraints
-        c = (-(pdist(RtrLoc, 'euclidean')).^2 + ((2*D)^2))';      % Vectorize the distance formula between pairs
+        c = ((2*D) - (pdist(RtrLoc, 'euclidean')))';      % Vectorize the distance formula between pairs
         
         % Equality Constraints (None)
         ceq = [];
